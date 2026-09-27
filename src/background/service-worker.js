@@ -13,6 +13,7 @@ import { handleRuntimeWorkspaceActivationMessage, isRuntimeWorkspaceActivationMe
 import { handleWorkspaceManualPlacementMessage, isWorkspaceManualPlacementMessage } from "../core/workspace-manual-placement-transaction/service-worker-handler.js";
 import { handleAutomaticPromotionMessage, isAutomaticPromotionMessage } from "../core/workspace-automatic-promotion-integration/service-worker-handler.js";
 import { classifyWorkspaceMembershipMessage, handleWorkspaceMembershipMessage } from "../core/workspace-membership-mutation/service-worker-handler.js";
+import { handleOverlayMessage, isOverlayMessage } from "../overlay/overlay-service.js";
 
 chrome.runtime.onInstalled.addListener(() => {
   console.log(CONSTELLATION_PRODUCT_NAME + " installed.");
@@ -30,6 +31,18 @@ chrome.runtime.onInstalled.addListener(() => {
 
 chrome.runtime.onStartup.addListener(() => {
   scheduleWorkspaceProjectionReconciliation("extension_startup");
+});
+
+chrome.commands.onCommand.addListener(async (command, tab) => {
+  if (command !== "toggle-constellation-overlay" || !Number.isInteger(tab?.id)) return;
+  try {
+    await chrome.scripting.executeScript({
+      target: { tabId: tab.id },
+      files: ["src/overlay/overlay.js"]
+    });
+  } catch (error) {
+    console.warn("Constellation overlay injection failed:", error);
+  }
 });
 
 chrome.tabs.onCreated.addListener((tab) => {
@@ -151,6 +164,13 @@ if (chrome.tabGroups?.onRemoved) {
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   const sidePanelUrl = chrome.runtime.getURL("src/sidepanel/sidepanel.html");
+  if (isOverlayMessage(message)) {
+    handleOverlayMessage(message, sender, chrome).then(
+      sendResponse,
+      (error) => sendResponse({ ok: false, reason: "overlay_unhandled_failure", error: String(error?.message || error || "unknown_error") })
+    );
+    return true;
+  }
   if (isRuntimeWindowBindingResolveMessage(message)) {
     return handleRuntimeWindowBindingMessage(message, sender, sendResponse, {
       chromeApi: chrome,
