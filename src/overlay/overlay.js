@@ -128,8 +128,10 @@
   function renderDashboard() {
     const stellae = snapshot?.stellae || [];
     const liveTabs = stellae.reduce((total, stella) => total + stella.counts.live, 0);
+    const liveStellae = stellae.filter((stella) => stella.status === "active").length;
+    const savedStellae = stellae.filter((stella) => stella.status !== "active").length;
     const cards = stellae.map((stella) => `<article class="card"><div class="card-head"><div><div class="card-name">${escapeHtml(stella.name)}</div><div class="aim">${escapeHtml(stella.aim)}</div></div><button class="action" data-focus-stella="${escapeAttr(stella.workspaceId)}" ${stella.status === "active" ? "" : "disabled"}>${stella.status === "active" ? "Focus →" : "Saved"}</button></div><div class="meta">${stella.status} · ${stella.counts.live} live · ${stella.counts.missing} missing · ${stella.counts.total} total</div></article>`).join("");
-    main.innerHTML = `<div class="topline"><div><h1>Dashboard</h1><p class="subtle">Your live Stella workspace map.</p></div><span class="kbd">Esc to close</span></div><div class="summary"><span class="pill">${stellae.length} live Stella${stellae.length === 1 ? "" : "s"}</span><span class="pill">${liveTabs} live tab${liveTabs === 1 ? "" : "s"}</span><span class="pill">Spike · read-mostly</span></div><section class="section"><div class="section-title"><h2>Active Stellas</h2></div><div class="grid">${cards || `<div class="empty">No active Stella assignments were found.</div>`}</div></section>`;
+    main.innerHTML = `<div class="topline"><div><h1>Dashboard</h1><p class="subtle">Your Stella workspace map across live browser state and saved memory.</p></div><span class="kbd">Esc to close</span></div><div class="summary"><span class="pill">${liveStellae} live Stella${liveStellae === 1 ? "" : "s"}</span><span class="pill">${savedStellae} saved</span><span class="pill">${liveTabs} live tab${liveTabs === 1 ? "" : "s"}</span></div><section class="section"><div class="section-title"><h2>Stellas</h2></div><div class="grid">${cards || `<div class="empty">No active Stella assignments were found.</div>`}</div></section>`;
     main.querySelectorAll("[data-focus-stella]").forEach((button) => button.addEventListener("click", async () => {
       const response = await send("focus_stella", { workspaceId: button.dataset.focusStella });
       if (response?.ok) close();
