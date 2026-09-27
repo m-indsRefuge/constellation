@@ -101,6 +101,77 @@ function normalizeJournal(value) {
 }
 
 function compareStellae(left, right) {
-  if (left.status !== right.status) return left.status === "active" ? -1 : 1;
+  const rank = { active: 0, paused: 1, saved: 2, unavailable: 3 };
+  const leftRank = Object.hasOwn(rank, left.status) ? rank[left.status] : 9;
+  const rightRank = Object.hasOwn(rank, right.status) ? rank[right.status] : 9;
+  if (leftRank !== rightRank) return leftRank - rightRank;
   return String(right.updatedAt).localeCompare(String(left.updatedAt));
+}
+
+
+export function mergeSavedWorkspaceMemory(snapshot, memoryRecords = []) {
+  const liveById = new Map((snapshot?.stellae || []).map((stella) => [stella.workspaceId, stella]));
+  const merged = [...(snapshot?.stellae || [])];
+
+  for (const record of Array.isArray(memoryRecords) ? memoryRecords : []) {
+    const workspace = record?.workspace;
+    if (!workspace || typeof workspace.workspaceId !== "string" || !workspace.workspaceId) continue;
+
+    if (liveById.has(workspace.workspaceId)) {
+      const live = liveById.get(workspace.workspaceId);
+      if ((!Array.isArray(live.journal) || live.journal.length === 0) && Array.isArray(record.journalEntries)) {
+        live.journal = memoryJournal(record.journalEntries);
+      }
+      continue;
+    }
+
+    const tabs = (Array.isArray(record.tabs) ? record.tabs : []).map((tab) => ({
+      workspaceTabId: typeof tab.workspaceTabId === "string" ? tab.workspaceTabId : "",
+      label: tab.alias || tab.originalTitle || tab.displayUrl || tab.url || "Untitled tab",
+      title: tab.originalTitle || "",
+      alias: tab.alias || "",
+      role: tab.role || "unassigned",
+      url: tab.displayUrl || tab.url || "",
+      live: false,
+      matchStatus: "saved_not_live",
+      candidateCount: 0,
+      liveTabId: null,
+      liveWindowId: null,
+      lastSeenAt: tab.lastSeenAt || tab.updatedAt || ""
+    }));
+
+    merged.push({
+      workspaceId: workspace.workspaceId,
+      windowId: null,
+      runtimeAssignmentId: "",
+      assignmentEpoch: null,
+      status: "saved",
+      name: workspace.name || "Untitled Stella",
+      aim: workspace.aim || record?.summaryCard?.workspaceAim || "No current aim",
+      workspaceType: workspace.workspaceType || "general",
+      updatedAt: workspace.updatedAt || workspace.lastPausedAt || "",
+      tabs,
+      journal: memoryJournal(record.journalEntries),
+      counts: { total: tabs.length, live: 0, missing: tabs.length }
+    });
+  }
+
+  return {
+    ...(snapshot || {}),
+    stellae: merged.sort(compareStellae)
+  };
+}
+
+function memoryJournal(entries) {
+  return (Array.isArray(entries) ? entries : [])
+    .filter((entry) => entry && typeof entry.text === "string")
+    .map((entry) => ({
+      entryId: typeof entry.journalEntryId === "string" ? entry.journalEntryId : "",
+      text: entry.text,
+      tag: typeof entry.tag === "string" ? entry.tag : "",
+      relatedRoleId: typeof entry.relatedRole === "string" ? entry.relatedRole : "",
+      relatedRoleLabel: typeof entry.relatedRole === "string" ? entry.relatedRole : "",
+      createdAt: typeof entry.createdAt === "string" ? entry.createdAt : ""
+    }))
+    .sort((left, right) => String(right.createdAt).localeCompare(String(left.createdAt)));
 }
