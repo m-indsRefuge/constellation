@@ -111,7 +111,8 @@ const runtimeAuthorityIndependentControlIds = new Set([
   "workspaceName",
   "workspaceAim",
   "workspaceType",
-  "createNewStellaButton"
+  "createNewStellaButton",
+  "recoverLiveStellaButton"
 ]);
 const runtimeAuthorityEnableWhenActiveControlIds = new Set(["addSelectedTabsButton", "addActiveTabButton", "openSearchTabButton", "moveWorkspaceTabsToNewWindowButton"]);
 const assignedWorkspaceAuthority = getSidePanelAssignedWorkspaceAuthority();
