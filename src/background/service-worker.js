@@ -174,6 +174,15 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       );
     return true;
   }
+  if (message?.type === "constellation-spike-create-stella") {
+    import("../overlay/spike-create-stella-service.js")
+      .then(({ handleSpikeCreateStella }) => handleSpikeCreateStella(message, sender, chrome, sidePanelUrl))
+      .then(
+        sendResponse,
+        (error) => sendResponse({ ok: false, reason: "create_stella_unhandled_failure", error: String(error?.message || error || "unknown_error") })
+      );
+    return true;
+  }
   if (isRuntimeWindowBindingResolveMessage(message)) {
     return handleRuntimeWindowBindingMessage(message, sender, sendResponse, {
       chromeApi: chrome,
