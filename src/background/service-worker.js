@@ -13,19 +13,20 @@ import { handleRuntimeWorkspaceActivationMessage, isRuntimeWorkspaceActivationMe
 import { handleWorkspaceManualPlacementMessage, isWorkspaceManualPlacementMessage } from "../core/workspace-manual-placement-transaction/service-worker-handler.js";
 import { handleAutomaticPromotionMessage, isAutomaticPromotionMessage } from "../core/workspace-automatic-promotion-integration/service-worker-handler.js";
 import { classifyWorkspaceMembershipMessage, handleWorkspaceMembershipMessage } from "../core/workspace-membership-mutation/service-worker-handler.js";
-import { handleOverlayMessage, isOverlayMessage } from "../overlay/overlay-service.js";
 
-chrome.runtime.onInstalled.addListener(() => {
-  console.log(CONSTELLATION_PRODUCT_NAME + " installed.");
-
-  chrome.sidePanel
-    .setPanelBehavior({
-      openPanelOnActionClick: true
-    })
+function configureSidePanelAction() {
+  return chrome.sidePanel
+    .setPanelBehavior({ openPanelOnActionClick: true })
     .catch((error) => {
       console.error("Side panel behavior error:", error);
     });
+}
 
+void configureSidePanelAction();
+
+chrome.runtime.onInstalled.addListener(() => {
+  console.log(CONSTELLATION_PRODUCT_NAME + " installed.");
+  void configureSidePanelAction();
   scheduleWorkspaceProjectionReconciliation("extension_installed");
 });
 
@@ -164,11 +165,13 @@ if (chrome.tabGroups?.onRemoved) {
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   const sidePanelUrl = chrome.runtime.getURL("src/sidepanel/sidepanel.html");
-  if (isOverlayMessage(message)) {
-    handleOverlayMessage(message, sender, chrome).then(
-      sendResponse,
-      (error) => sendResponse({ ok: false, reason: "overlay_unhandled_failure", error: String(error?.message || error || "unknown_error") })
-    );
+  if (message?.type === "constellation-overlay-command") {
+    import("../overlay/overlay-service.js")
+      .then(({ handleOverlayMessage }) => handleOverlayMessage(message, sender, chrome))
+      .then(
+        sendResponse,
+        (error) => sendResponse({ ok: false, reason: "overlay_unhandled_failure", error: String(error?.message || error || "unknown_error") })
+      );
     return true;
   }
   if (isRuntimeWindowBindingResolveMessage(message)) {
