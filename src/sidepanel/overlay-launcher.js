@@ -9,6 +9,18 @@ button?.addEventListener("click", async () => {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
     if (!Number.isInteger(tab?.id)) throw new Error("No active browser tab is available.");
 
+    const url = new URL(tab.url || "");
+    if (!["http:", "https:"].includes(url.protocol)) {
+      throw new Error("Overlay is available on normal http:// or https:// pages.");
+    }
+
+    const originPattern = url.origin + "/*";
+    const alreadyGranted = await chrome.permissions.contains({ origins: [originPattern] });
+    if (!alreadyGranted) {
+      const granted = await chrome.permissions.request({ origins: [originPattern] });
+      if (!granted) throw new Error("Site access was not granted for " + url.origin + ".");
+    }
+
     await chrome.scripting.executeScript({
       target: { tabId: tab.id },
       files: ["src/overlay/overlay.js"]
@@ -16,7 +28,7 @@ button?.addEventListener("click", async () => {
 
     setStatus("");
   } catch (error) {
-    setStatus("Overlay could not open on this page. Try a normal https:// webpage. " + String(error?.message || error || ""));
+    setStatus("Overlay could not open on this page. " + String(error?.message || error || ""));
   } finally {
     button.disabled = false;
     button.textContent = original;
