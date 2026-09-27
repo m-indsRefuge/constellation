@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createOverlaySnapshot, resolveWorkspaceTab } from "../../src/overlay/overlay-model.js";
+import { createOverlaySnapshot, mergeSavedWorkspaceMemory, resolveWorkspaceTab } from "../../src/overlay/overlay-model.js";
 
 test("resolves an exact live tab before URL fallback", () => {
   const result = resolveWorkspaceTab({ tabId: 4, url: "https://example.com" }, [
@@ -61,4 +61,30 @@ test("snapshot exposes only active assignments and sanitized navigation state", 
   assert.equal(snapshot.stellae[0].counts.missing, 1);
   assert.equal(snapshot.stellae[0].tabs[0].label, "MOSS repo");
   assert.equal(snapshot.stellae[0].journal[0].text, "Polish the character.");
+});
+
+
+test("merges saved Workspace Library records without pretending they are live", () => {
+  const merged = mergeSavedWorkspaceMemory({
+    schema: "constellation-overlay-snapshot-v0.1",
+    generatedAt: "2026-09-27T20:00:00.000Z",
+    runtimeSessionId: "",
+    stellae: []
+  }, [{
+    workspace: {
+      workspaceId: "saved-1",
+      name: "Saved Stella",
+      aim: "Continue later",
+      workspaceType: "research",
+      lifecycleState: "paused",
+      updatedAt: "2026-09-27T18:00:00.000Z"
+    },
+    tabs: [{ workspaceTabId: "saved-tab", url: "https://example.com", originalTitle: "Example", role: "research" }],
+    journalEntries: [{ journalEntryId: "saved-journal", text: "Remember this.", createdAt: "2026-09-27T17:00:00.000Z" }]
+  }]);
+
+  assert.equal(merged.stellae.length, 1);
+  assert.equal(merged.stellae[0].status, "saved");
+  assert.equal(merged.stellae[0].tabs[0].live, false);
+  assert.equal(merged.stellae[0].journal[0].text, "Remember this.");
 });
