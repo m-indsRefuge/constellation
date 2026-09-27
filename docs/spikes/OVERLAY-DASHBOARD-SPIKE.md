@@ -92,3 +92,7 @@ node --check src/background/service-worker.js
 ## Spike success condition
 
 The navigation concept is promising if the Operator can move between several active Stellas and their tabs without using Chrome's native tab strip/window hunting, and the dashboard/Journal/Notes composition feels like a coherent Constellation surface rather than a modal utility.
+
+## Deferred visual alignment
+
+The production side panel is not restyled during this spike. Before the overlay graduates beyond spike status, its sidebar and the existing side panel should be brought onto one Constellation visual system so navigation and management read as two surfaces of the same product.
