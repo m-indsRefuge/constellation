@@ -97,7 +97,17 @@ const runtimeAuthorityIndependentControlIds = new Set([
   "clearDiagnosticsButton",
   "copyAutomaticPromotionScenarioChecklistButton",
   "prepareAutomaticPromotionEvidencePacketButton",
-  "copyAutomaticPromotionEvidencePacketButton"
+  "copyAutomaticPromotionEvidencePacketButton",
+  "refreshSavedWorkspacesButton",
+  "inspectSavedWorkspaceButton",
+  "savedWorkspaceSelect",
+  "workspaceLibraryViewRecentButton",
+  "workspaceLibraryViewAllButton",
+  "workspaceLibraryViewArchivedButton",
+  "workspaceLibraryPreviewButton",
+  "workspaceLibraryResumeButton",
+  "workspaceLibraryOpenControlsButton",
+  "openConstellationOverlayButton"
 ]);
 const runtimeAuthorityEnableWhenActiveControlIds = new Set(["addSelectedTabsButton", "addActiveTabButton", "openSearchTabButton", "moveWorkspaceTabsToNewWindowButton"]);
 const assignedWorkspaceAuthority = getSidePanelAssignedWorkspaceAuthority();
