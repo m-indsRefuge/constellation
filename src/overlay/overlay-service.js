@@ -1,7 +1,8 @@
 import { validateSessionAuthority } from "../core/runtime-session-authority/contract.js";
 import { createChromeRuntimeSessionAuthorityAdapters } from "../core/runtime-session-authority/chrome-adapter.js";
 import { createRuntimeWorkspaceRecordChromeAdapters } from "../core/runtime-workspace-record/chrome-adapter.js";
-import { createOverlaySnapshot, resolveWorkspaceTab } from "./overlay-model.js";
+import { listWorkspaceMemoryRecords } from "../core/workspace-memory-store.js";
+import { createOverlaySnapshot, mergeSavedWorkspaceMemory, resolveWorkspaceTab } from "./overlay-model.js";
 
 export const OVERLAY_MESSAGE_TYPE = "constellation-overlay-command";
 export const OVERLAY_COMMANDS = Object.freeze({
@@ -21,13 +22,15 @@ export async function buildLiveOverlaySnapshot(chromeApi) {
   const authority = await sessionAdapters.readAuthority();
   const authorityValidation = validateSessionAuthority(authority);
   if (!authorityValidation.valid) {
-    return {
+    let memoryRecords = [];
+    try { memoryRecords = await listWorkspaceMemoryRecords(); } catch { /* best-effort saved projection */ }
+    return mergeSavedWorkspaceMemory({
       schema: "constellation-overlay-snapshot-v0.1",
       generatedAt: new Date().toISOString(),
       runtimeSessionId: "",
       stellae: [],
       warnings: ["runtime_session_authority_unavailable"]
-    };
+    }, memoryRecords);
   }
 
   const activeAssignments = authority.assignmentRegistry.assignments.filter((assignment) => assignment.state === "active");
@@ -37,12 +40,16 @@ export async function buildLiveOverlaySnapshot(chromeApi) {
   }));
   const browserTabs = await chromeApi.tabs.query({});
 
-  return createOverlaySnapshot({
+  const liveSnapshot = createOverlaySnapshot({
     authority,
     recordsByWorkspaceId: Object.fromEntries(recordPairs),
     browserTabs,
     generatedAt: new Date().toISOString()
   });
+
+  let memoryRecords = [];
+  try { memoryRecords = await listWorkspaceMemoryRecords(); } catch { /* Memory is supplemental to live authority. */ }
+  return mergeSavedWorkspaceMemory(liveSnapshot, memoryRecords);
 }
 
 export async function handleOverlayMessage(message, sender, chromeApi) {
