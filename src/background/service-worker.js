@@ -174,12 +174,16 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       );
     return true;
   }
-  if (message?.type === "constellation-spike-create-stella") {
+  if (message?.type === "constellation-spike-create-stella" || message?.type === "constellation-spike-recover-live-stella") {
     import("../overlay/spike-create-stella-service.js")
-      .then(({ handleSpikeCreateStella }) => handleSpikeCreateStella(message, sender, chrome, sidePanelUrl))
+      .then(({ handleSpikeCreateStella, handleSpikeRecoverLiveStella }) =>
+        message.type === "constellation-spike-recover-live-stella"
+          ? handleSpikeRecoverLiveStella(message, sender, chrome, sidePanelUrl)
+          : handleSpikeCreateStella(message, sender, chrome, sidePanelUrl)
+      )
       .then(
         sendResponse,
-        (error) => sendResponse({ ok: false, reason: "create_stella_unhandled_failure", error: String(error?.message || error || "unknown_error") })
+        (error) => sendResponse({ ok: false, reason: "stella_lifecycle_spike_unhandled_failure", error: String(error?.message || error || "unknown_error") })
       );
     return true;
   }
