@@ -1,33 +1,49 @@
 import { scheduleWorkspaceProjectionReconciliation } from "../core/automatic-workspace-projection-reconciler.js";
 import { CONSTELLATION_PRODUCT_NAME } from "../core/product-identity.js";
 import { EVENT_IDENTITIES } from "../core/constellation-identity-contract.js";
-import { coordinateJournalAppend } from "../core/journal-append-coordination/coordinator.js";
-import { createChromeJournalAdapters } from "../core/journal-append-coordination/chrome-adapter.js";
-import { JOURNAL_APPEND_REQUEST_SCHEMA, response as journalResponse } from "../core/journal-append-coordination/contract.js";
+import { coordinateAssignedJournalAppend, coordinateJournalAppend } from "../core/journal-append-coordination/coordinator.js";
+import { createChromeAssignedJournalAdapters, createChromeJournalAdapters } from "../core/journal-append-coordination/chrome-adapter.js";
+import { JOURNAL_APPEND_ASSIGNED_REQUEST_SCHEMA, JOURNAL_APPEND_REQUEST_SCHEMA, assignedResponse as assignedJournalResponse, response as journalResponse } from "../core/journal-append-coordination/contract.js";
 import { coordinateContextRegistration, coordinateWindowCloseCleanup } from "../core/runtime-session-authority/coordinator.js";
 import { createChromeRuntimeSessionAuthorityAdapters } from "../core/runtime-session-authority/chrome-adapter.js";
 import { createContextResultFromRequest, isContextRegisterMessage, validateContextRegisterRequest, validateSidePanelSender } from "../core/runtime-session-authority/contract.js";
+import { handleRuntimeWindowBindingMessage, isRuntimeWindowBindingResolveMessage } from "../core/runtime-window-binding/service-worker-handler.js";
+import { handleRuntimeWorkspaceMutationMessage, isRuntimeWorkspaceMutationMessage } from "../core/runtime-workspace-mutation/service-worker-handler.js";
 import { handleRuntimeWorkspaceActivationMessage, isRuntimeWorkspaceActivationMessage } from "../core/runtime-workspace-activation/service-worker-handler.js";
 import { handleWorkspaceManualPlacementMessage, isWorkspaceManualPlacementMessage } from "../core/workspace-manual-placement-transaction/service-worker-handler.js";
 import { handleAutomaticPromotionMessage, isAutomaticPromotionMessage } from "../core/workspace-automatic-promotion-integration/service-worker-handler.js";
 import { classifyWorkspaceMembershipMessage, handleWorkspaceMembershipMessage } from "../core/workspace-membership-mutation/service-worker-handler.js";
 
-chrome.runtime.onInstalled.addListener(() => {
-  console.log(CONSTELLATION_PRODUCT_NAME + " installed.");
-
-  chrome.sidePanel
-    .setPanelBehavior({
-      openPanelOnActionClick: true
-    })
+function configureSidePanelAction() {
+  return chrome.sidePanel
+    .setPanelBehavior({ openPanelOnActionClick: true })
     .catch((error) => {
       console.error("Side panel behavior error:", error);
     });
+}
 
+void configureSidePanelAction();
+
+chrome.runtime.onInstalled.addListener(() => {
+  console.log(CONSTELLATION_PRODUCT_NAME + " installed.");
+  void configureSidePanelAction();
   scheduleWorkspaceProjectionReconciliation("extension_installed");
 });
 
 chrome.runtime.onStartup.addListener(() => {
   scheduleWorkspaceProjectionReconciliation("extension_startup");
+});
+
+chrome.commands.onCommand.addListener(async (command, tab) => {
+  if (command !== "toggle-constellation-overlay" || !Number.isInteger(tab?.id)) return;
+  try {
+    await chrome.scripting.executeScript({
+      target: { tabId: tab.id },
+      files: ["src/overlay/overlay.js"]
+    });
+  } catch (error) {
+    console.warn("Constellation overlay injection failed:", error);
+  }
 });
 
 chrome.tabs.onCreated.addListener((tab) => {
@@ -149,6 +165,35 @@ if (chrome.tabGroups?.onRemoved) {
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   const sidePanelUrl = chrome.runtime.getURL("src/sidepanel/sidepanel.html");
+  if (message?.type === "constellation-overlay-command") {
+    import("../overlay/overlay-service.js")
+      .then(({ handleOverlayMessage }) => handleOverlayMessage(message, sender, chrome))
+      .then(
+        sendResponse,
+        (error) => sendResponse({ ok: false, reason: "overlay_unhandled_failure", error: String(error?.message || error || "unknown_error") })
+      );
+    return true;
+  }
+  if (message?.type === "constellation-spike-create-stella" || message?.type === "constellation-spike-recover-live-stella") {
+    import("../overlay/spike-create-stella-service.js")
+      .then(({ handleSpikeCreateStella, handleSpikeRecoverLiveStella }) =>
+        message.type === "constellation-spike-recover-live-stella"
+          ? handleSpikeRecoverLiveStella(message, sender, chrome, sidePanelUrl)
+          : handleSpikeCreateStella(message, sender, chrome, sidePanelUrl)
+      )
+      .then(
+        sendResponse,
+        (error) => sendResponse({ ok: false, reason: "stella_lifecycle_spike_unhandled_failure", error: String(error?.message || error || "unknown_error") })
+      );
+    return true;
+  }
+  if (isRuntimeWindowBindingResolveMessage(message)) {
+    return handleRuntimeWindowBindingMessage(message, sender, sendResponse, {
+      chromeApi: chrome,
+      runtimeId: chrome.runtime.id,
+      sidePanelUrl
+    });
+  }
   if (isWorkspaceManualPlacementMessage(message)) {
     return handleWorkspaceManualPlacementMessage(message, sender, sendResponse, {
       chromeApi: chrome,
@@ -187,6 +232,18 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       return false;
     }
     coordinateContextRegistration(message, { sourceUrl: sender.url }, createChromeRuntimeSessionAuthorityAdapters(chrome)).then(sendResponse, () => sendResponse(createContextResultFromRequest(message, { status: "failed", reason: "unhandled_coordination_failure", retrySafe: true })));
+    return true;
+  }
+  if (isRuntimeWorkspaceMutationMessage(message)) {
+    return handleRuntimeWorkspaceMutationMessage(message, sender, sendResponse, {
+      chromeApi: chrome,
+      runtimeId: chrome.runtime.id,
+      sidePanelUrl
+    });
+  }
+  if (message?.schema === JOURNAL_APPEND_ASSIGNED_REQUEST_SCHEMA) {
+    if (sender?.id !== chrome.runtime.id || sender?.url !== sidePanelUrl) { sendResponse(assignedJournalResponse(message, { status: "rejected", reason: "sender_not_authorized", phase: "route_validation" })); return false; }
+    coordinateAssignedJournalAppend(message, createChromeAssignedJournalAdapters(chrome)).then(sendResponse, () => sendResponse(assignedJournalResponse(message, { status: "failed", reason: "unhandled_coordination_failure", phase: "route_coordination", retrySafe: true })));
     return true;
   }
   if (message?.schema === JOURNAL_APPEND_REQUEST_SCHEMA) {
