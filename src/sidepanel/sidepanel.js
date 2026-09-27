@@ -107,7 +107,11 @@ const runtimeAuthorityIndependentControlIds = new Set([
   "workspaceLibraryPreviewButton",
   "workspaceLibraryResumeButton",
   "workspaceLibraryOpenControlsButton",
-  "openConstellationOverlayButton"
+  "openConstellationOverlayButton",
+  "workspaceName",
+  "workspaceAim",
+  "workspaceType",
+  "createNewStellaButton"
 ]);
 const runtimeAuthorityEnableWhenActiveControlIds = new Set(["addSelectedTabsButton", "addActiveTabButton", "openSearchTabButton", "moveWorkspaceTabsToNewWindowButton"]);
 const assignedWorkspaceAuthority = getSidePanelAssignedWorkspaceAuthority();
