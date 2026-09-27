@@ -35,5 +35,9 @@
       },
       "description": "Toggle the Constellation Stella overlay"
     }
-  }
+  },
+  "optional_host_permissions": [
+    "http://*/*",
+    "https://*/*"
+  ]
 }
