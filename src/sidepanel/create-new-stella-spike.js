@@ -76,3 +76,50 @@ function setStatus(message) {
   const status = document.getElementById("createNewStellaStatus");
   if (status) status.textContent = message || "";
 }
+
+
+const recoverButton = ensureRecoverButton();
+recoverButton?.addEventListener("click", recoverLiveStella);
+
+async function recoverLiveStella() {
+  recoverButton.disabled = true;
+  const original = recoverButton.textContent;
+  recoverButton.textContent = "Recovering…";
+  setStatus("Looking for one exact live Stella match in this Chrome window…");
+  try {
+    const context = await getSidePanelRuntimeSessionContextClient().register();
+    if (!["registered","replaced","no_change"].includes(context?.status) || context?.authorityVerified !== true) {
+      throw new Error(context?.reason || "runtime_context_not_verified");
+    }
+    const response = await chrome.runtime.sendMessage({
+      type: "constellation-spike-recover-live-stella",
+      contextId: context.context.contextId,
+      windowId: context.context.windowId
+    });
+    if (!response?.ok) {
+      if (response?.reason === "ambiguous_live_stella_match") throw new Error("More than one Stella matches this window; recovery failed closed.");
+      if (response?.reason === "no_exact_live_stella_match") throw new Error("No exact live Stella could be identified in this window.");
+      throw new Error(response?.reason || "live_stella_recovery_failed");
+    }
+    setStatus("Recovered " + response.workspaceName + " from exact live browser evidence. Reloading controls…");
+    window.setTimeout(() => window.location.reload(), 350);
+  } catch (error) {
+    setStatus("Could not recover live Stella: " + String(error?.message || error || "unknown_error"));
+    recoverButton.disabled = false;
+    recoverButton.textContent = original;
+  }
+}
+
+function ensureRecoverButton() {
+  const existing = document.getElementById("recoverLiveStellaButton");
+  if (existing) return existing;
+  const createButton = document.getElementById("createNewStellaButton");
+  if (!createButton?.parentElement) return null;
+  const button = document.createElement("button");
+  button.id = "recoverLiveStellaButton";
+  button.type = "button";
+  button.className = "secondary-button";
+  button.textContent = "Recover Live Stella";
+  createButton.insertAdjacentElement("afterend", button);
+  return button;
+}
