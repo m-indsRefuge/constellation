@@ -9,7 +9,9 @@
     "storage",
     "sidePanel",
     "windows",
-    "tabGroups"
+    "tabGroups",
+    "activeTab",
+    "scripting"
   ],
   "background": {
     "service_worker": "src/background/service-worker.js",
@@ -24,5 +26,14 @@
   },
   "action": {
     "default_title": "Open Constellation"
+  },
+  "commands": {
+    "toggle-constellation-overlay": {
+      "suggested_key": {
+        "default": "Ctrl+Shift+Space",
+        "mac": "Command+Shift+Space"
+      },
+      "description": "Toggle the Constellation Stella overlay"
+    }
   }
 }
