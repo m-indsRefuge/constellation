@@ -12,6 +12,7 @@ import { coordinateWorkspaceCreationAssignment } from "../core/workspace-creatio
 import { WORKSPACE_CREATION_ASSIGNMENT_REQUEST_SCHEMA } from "../core/workspace-creation-assignment-transaction/contract.js";
 
 export const SPIKE_CREATE_STELLA_TYPE = "constellation-spike-create-stella";
+export const SPIKE_RECOVER_STELLA_TYPE = "constellation-spike-recover-live-stella";
 const LEDGER_KEY = "constellationSpikeWorkspaceCreationLedgerV01";
 
 export async function handleSpikeCreateStella(message, sender, chromeApi, expectedSidePanelUrl) {
@@ -249,4 +250,106 @@ async function reconfirmResolution(chromeApi, input) {
 
 function collection(source, status, evidence = [], error = "") {
   return { source, status, evidence, error };
+}
+
+
+export async function handleSpikeRecoverLiveStella(message, sender, chromeApi, expectedSidePanelUrl) {
+  if (sender?.id !== chromeApi?.runtime?.id || sender?.url !== expectedSidePanelUrl) {
+    return { ok: false, reason: "sender_not_authorized" };
+  }
+  if (!message || message.type !== SPIKE_RECOVER_STELLA_TYPE || typeof message.contextId !== "string" || !Number.isInteger(message.windowId)) {
+    return { ok: false, reason: "invalid_recovery_request" };
+  }
+
+  const candidates = await discoverExactLiveRecoveryCandidates(chromeApi, message.windowId);
+  if (candidates.length !== 1) {
+    return {
+      ok: false,
+      reason: candidates.length === 0 ? "no_exact_live_stella_match" : "ambiguous_live_stella_match",
+      candidates: candidates.map((candidate) => ({ workspaceId: candidate.record.workspaceId, name: candidate.record.workspace?.name || "Untitled Stella", exactMatchCount: candidate.exactMatchCount }))
+    };
+  }
+
+  const candidate = candidates[0].record;
+  const now = new Date().toISOString();
+  const resolutionOperationId = crypto.randomUUID();
+  const authorization = await reconfirmResolution(chromeApi, {
+    operationId: resolutionOperationId,
+    contextId: message.contextId,
+    windowId: message.windowId
+  });
+  if (authorization.status !== "creation_required" || authorization.decision !== "create_workspace_and_assign") {
+    return { ok: false, reason: authorization.reason || "recovery_not_authorized", resolution: authorization };
+  }
+
+  const request = {
+    schema: WORKSPACE_CREATION_ASSIGNMENT_REQUEST_SCHEMA,
+    operationId: crypto.randomUUID(),
+    contextId: message.contextId,
+    windowId: message.windowId,
+    workspaceId: candidate.workspaceId,
+    runtimeAssignmentId: crypto.randomUUID(),
+    requestedAt: now,
+    workspaceRecord: candidate.workspace,
+    authorization: {
+      resolutionOperationId,
+      resolutionResultSchema: authorization.schema,
+      status: authorization.status,
+      decision: authorization.decision,
+      contextId: message.contextId,
+      windowId: message.windowId,
+      operatorAuthorized: true
+    }
+  };
+
+  const result = await coordinateWorkspaceCreationAssignment(request, createTransactionAdapters(chromeApi, request));
+  const success = ["committed","replayed"].includes(result.status) && result.workspaceVerified === true && result.assignmentVerified === true;
+  return {
+    ok: success,
+    reason: success ? "" : result.reason || result.status,
+    workspaceId: candidate.workspaceId,
+    workspaceName: candidate.workspace?.name || "Untitled Stella",
+    exactMatchCount: candidates[0].exactMatchCount,
+    result
+  };
+}
+
+async function discoverExactLiveRecoveryCandidates(chromeApi, windowId) {
+  const [localValues, browserTabs] = await Promise.all([
+    chromeApi.storage.local.get(null),
+    chromeApi.tabs.query({})
+  ]);
+  const browserById = new Map((browserTabs || []).filter((tab) => Number.isInteger(tab?.id)).map((tab) => [tab.id, tab]));
+  const candidates = [];
+
+  for (const [key, value] of Object.entries(localValues || {})) {
+    if (!key.startsWith("constellationRuntimeWorkspace:")) continue;
+    const workspaceId = key.slice("constellationRuntimeWorkspace:".length);
+    const validation = snapshotAndValidateRuntimeWorkspaceRecord(value, { workspaceId, key });
+    if (!validation.valid || validation.record.lifecycleState !== "available") continue;
+
+    let exactMatchCount = 0;
+    let extantExactCount = 0;
+    let contradictory = false;
+    for (const workspaceTab of Array.isArray(validation.record.workspace?.tabs) ? validation.record.workspace.tabs : []) {
+      if (!Number.isInteger(workspaceTab?.tabId)) continue;
+      const live = browserById.get(workspaceTab.tabId);
+      if (!live) continue;
+      extantExactCount += 1;
+      const urlMatches = typeof workspaceTab.url === "string" && workspaceTab.url && (workspaceTab.url === live.url || workspaceTab.url === live.pendingUrl);
+      if (live.windowId !== windowId || !urlMatches) {
+        contradictory = true;
+        break;
+      }
+      exactMatchCount += 1;
+    }
+
+    if (!contradictory && exactMatchCount > 0 && exactMatchCount === extantExactCount) {
+      candidates.push({ record: validation.record, exactMatchCount });
+    }
+  }
+
+  candidates.sort((left, right) => right.exactMatchCount - left.exactMatchCount || String(left.record.workspaceId).localeCompare(String(right.record.workspaceId)));
+  if (candidates.length > 1 && candidates[0].exactMatchCount > candidates[1].exactMatchCount) return [candidates[0]];
+  return candidates;
 }
