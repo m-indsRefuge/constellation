@@ -76,6 +76,10 @@ node --check src/overlay/overlay.js
 node --check src/background/service-worker.js
 ```
 
+## Reload note
+
+Chrome clears `chrome.storage.session` when an extension is reloaded. Layer 2.3D window/Stella assignments therefore need to be recreated or resumed after reloading the spike build. Durable local/IndexedDB workspace data is not the overlay's session authority and is not used as a shortcut around this rule.
+
 ## Operator live test
 
 1. Load the spike branch as the unpacked extension.
